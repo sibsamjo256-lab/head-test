@@ -181,10 +181,10 @@ class MLP(nn.Module):
         self.num_layers = num_layers
         h = [hidden_dim] * (num_layers - 1)
         self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim, *h], [*h, output_dim]))
-        
+
         self.sigmoid = sigmoid  # 시그모이드 사용 여부 다시 활성화
         self.act = act() if isinstance(act, type) else act
-        
+
         if residual and input_dim != output_dim:
             raise ValueError("residual is only supported if input_dim == output_dim")
         self.residual = residual
@@ -195,12 +195,12 @@ class MLP(nn.Module):
         for i, layer in enumerate(self.layers):
             # 마지막 레이어 전까지만 활성화 함수(ReLU) 적용
             x = self.act(layer(x)) if i < self.num_layers - 1 else layer(x)
-        
+
         if self.residual:
             x = x + orig_x
-            
+
         x = self.out_norm(x)
-        
+
         # sigmoid 인자가 True인 경우에만 시그모이드 적용
         return x.sigmoid() if self.sigmoid else x
 
@@ -245,7 +245,11 @@ class MSDeformAttn(nn.Module):
         constant_(self.sampling_offsets.weight.data, 0.0)
         thetas = torch.arange(self.n_heads, dtype=torch.float32) * (2.0 * math.pi / self.n_heads)
         grid_init = torch.stack([thetas.cos(), thetas.sin()], -1)
-        grid_init = (grid_init / grid_init.abs().max(-1, keepdim=True)[0]).view(self.n_heads, 1, 1, 2).repeat(1, self.n_levels, self.n_points, 1)
+        grid_init = (
+            (grid_init / grid_init.abs().max(-1, keepdim=True)[0])
+            .view(self.n_heads, 1, 1, 2)
+            .repeat(1, self.n_levels, self.n_points, 1)
+        )
         for i in range(self.n_points):
             grid_init[:, :, i, :] *= i + 1
         with torch.no_grad():
@@ -308,10 +312,14 @@ class DeformableTransformerDecoderLayer(nn.Module):
 
     def forward(self, embed, refer_bbox, feats, shapes, padding_mask=None, attn_mask=None, query_pos=None):
         q = k = self.with_pos_embed(embed, query_pos)
-        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[0].transpose(0, 1)
+        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[
+            0
+        ].transpose(0, 1)
         embed = embed + self.dropout1(tgt)
         embed = self.norm1(embed)
-        tgt = self.cross_attn(self.with_pos_embed(embed, query_pos), refer_bbox.unsqueeze(2), feats, shapes, padding_mask)
+        tgt = self.cross_attn(
+            self.with_pos_embed(embed, query_pos), refer_bbox.unsqueeze(2), feats, shapes, padding_mask
+        )
         embed = embed + self.dropout2(tgt)
         embed = self.norm2(embed)
         return self.forward_ffn(embed)
@@ -327,7 +335,9 @@ class DeformableTransformerDecoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
 
-    def forward(self, embed, refer_bbox, feats, shapes, bbox_head, score_head, pos_mlp, attn_mask=None, padding_mask=None):
+    def forward(
+        self, embed, refer_bbox, feats, shapes, bbox_head, score_head, pos_mlp, attn_mask=None, padding_mask=None
+    ):
         output = embed
         dec_bboxes = []
         dec_cls = []
